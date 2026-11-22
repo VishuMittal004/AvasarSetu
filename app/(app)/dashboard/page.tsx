@@ -11,6 +11,8 @@ import { SearchService } from "@/services/SearchService";
 import { Opportunity, SearchResult } from "@/types";
 import { getCurrentTimeMs, getDeadlineDaysLeft, getOpportunityFreshness } from "@/lib/utils";
 
+type DashboardMatch = SearchResult & { matchScore?: number; matchReason?: string };
+
 const CATEGORIES = [
   { name: "Jobs", icon: Briefcase, type: "job" },
   { name: "Scholarships", icon: GraduationCap, type: "scholarship" },
@@ -66,7 +68,8 @@ export default function DashboardPage() {
   const savedItems = useSavedStore((state) => state.saved);
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [recommendations, setRecommendations] = useState<SearchResult[]>([]);
+  const [recommendations, setRecommendations] = useState<DashboardMatch[]>([]);
+  const [recommendationSource, setRecommendationSource] = useState<"ai" | "rules">("rules");
   const [savedOpportunities, setSavedOpportunities] = useState<Opportunity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const now = getCurrentTimeMs();
@@ -77,14 +80,67 @@ export default function DashboardPage() {
   }).length;
 
   useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+
     const fetchRecommendations = async () => {
       setIsLoading(true);
-      const allOpps = await OpportunityService.getOpportunities();
-      const results = SearchService.getRecommendations(profile, allOpps);
-      setRecommendations(results);
-      setIsLoading(false);
+      const profileForMatching = profile ? {
+        age: profile.age,
+        dateOfBirth: profile.dateOfBirth,
+        educationLevel: profile.educationLevel,
+        degree: profile.degree,
+        branch: profile.branch,
+        institution: profile.institution,
+        graduationYear: profile.graduationYear,
+        employmentStatus: profile.employmentStatus,
+        yearsOfExperience: profile.yearsOfExperience,
+        currentRole: profile.currentRole,
+        category: profile.category,
+        income: profile.income,
+        state: profile.state,
+        district: profile.district,
+        skills: profile.skills,
+        interests: profile.interests,
+        preferredLocations: profile.preferredLocations,
+      } : null;
+
+      try {
+        const response = await fetch("/api/recommendations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profile: profileForMatching }),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Recommendation request failed.");
+        const payload = await response.json();
+        if (cancelled) return;
+        setRecommendations(Array.isArray(payload.results) ? payload.results as DashboardMatch[] : []);
+        setRecommendationSource(payload.source === "ai" ? "ai" : "rules");
+      } catch {
+        if (cancelled) return;
+        // Keep the dashboard useful if the AI provider or recommendations API is unavailable.
+        try {
+          const allOpps = await OpportunityService.getOpportunities();
+          const results = SearchService.getRecommendations(profile, allOpps)
+            .filter(result => result.eligibility.failedCriteria.length === 0);
+          if (!cancelled) {
+            setRecommendations(results);
+            setRecommendationSource("rules");
+          }
+        } catch {
+          if (!cancelled) setRecommendations([]);
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
     };
+
     fetchRecommendations();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [profile]);
 
   useEffect(() => {
@@ -171,9 +227,14 @@ export default function DashboardPage() {
               <h2 style={{ fontSize: 16, fontWeight: 700, color: "#fafafa", display: "flex", alignItems: "center", gap: 8 }}>
                 <TrendingUp size={18} color="#10b981" /> Top Matches
               </h2>
-              <Link href="/explore" style={{ fontSize: 13, fontWeight: 700, color: "#10b981", display: "flex", alignItems: "center", gap: 2, textDecoration: "none" }}>
-                View all <ChevronRight size={16} />
-              </Link>
+              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                <span style={{ color: recommendationSource === "ai" ? "#a5b4fc" : "#71717a", fontSize: 11, fontWeight: 600 }}>
+                  {recommendationSource === "ai" ? "AI-ranked · eligibility checked separately" : "Rules-ranked · AI unavailable"}
+                </span>
+                <Link href="/explore" style={{ fontSize: 13, fontWeight: 700, color: "#10b981", display: "flex", alignItems: "center", gap: 2, textDecoration: "none" }}>
+                  View all <ChevronRight size={16} />
+                </Link>
+              </div>
             </div>
 
             {isLoading ? (
@@ -195,15 +256,22 @@ export default function DashboardPage() {
                 <Link key={result.opportunity.id} href={`/opportunities/${result.opportunity.id}`} style={S.card}
                   onMouseEnter={e => (e.currentTarget.style.borderColor = "#10b981")}
                   onMouseLeave={e => (e.currentTarget.style.borderColor = "#27272a")}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
                     <span style={S.typeTag}>{result.opportunity.type}</span>
-                    {result.eligibility.isEligible ? (
-                      <span style={S.eligBadge}><CheckCircle2 size={11} /> Criteria Match</span>
-                    ) : result.eligibility.isPartiallyEligible ? (
-                      <span style={S.partialBadge}>Potential Match</span>
-                    ) : result.eligibility.isUnknown ? (
-                      <span style={S.partialBadge}>Add details to check</span>
-                    ) : null}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      {result.matchScore !== undefined && (
+                        <span style={{ ...S.partialBadge, color: "#a5b4fc", background: "rgba(99,102,241,0.12)" }}>
+                          AI fit {result.matchScore}/100
+                        </span>
+                      )}
+                      {result.eligibility.isEligible ? (
+                        <span style={S.eligBadge}><CheckCircle2 size={11} /> Rules match</span>
+                      ) : result.eligibility.isPartiallyEligible ? (
+                        <span style={S.partialBadge}>Potential match</span>
+                      ) : result.eligibility.isUnknown ? (
+                        <span style={S.partialBadge}>Eligibility unknown</span>
+                      ) : null}
+                    </div>
                   </div>
                   <h3 style={S.cardTitle}>{result.opportunity.title}</h3>
                   <div style={S.cardMeta}>
@@ -219,6 +287,7 @@ export default function DashboardPage() {
                       result.opportunity.isDemoRecord === true || result.opportunity.id.startsWith("demo-"),
                     ).label}
                   </p>
+                  {result.matchReason && <p style={{ fontSize: 12, color: "#a1a1aa", marginTop: 8 }}>Why it fits: {result.matchReason}</p>}
                 </Link>
               ))
             )}
