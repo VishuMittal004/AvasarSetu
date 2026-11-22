@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { Compass, ArrowLeft, Shield } from "lucide-react";
 
 export default function PrivacyPage() {
@@ -47,7 +47,7 @@ export default function PrivacyPage() {
             <section>
               <h2 className="text-xl font-bold text-[#fafafa] mb-3">3. How We Use Information</h2>
               <p>
-                When you search, the query and optional profile fields you include are sent to the AvasarSetu API to find and rank opportunities. Search terms may be sent to Google Gemini to create a search embedding, and natural-language queries may be sent to Groq for interpretation. If you use Smart Resume, the text you paste is sent to Groq to extract profile fields. AvasarSetu does not store the full pasted resume; extracted values are placed in the profile form and are saved to your account only when you choose Save Profile. Processing by these third-party providers is subject to their privacy terms. Do not include Aadhaar, PAN, bank details, or other secrets in searches or resume text. The app uses profile fields to:
+                When you search, the query and optional profile fields you include are sent to the AvasarSetu API to find and rank opportunities. Search terms may be sent to Google Gemini to create a search embedding, and natural-language queries may be sent to Groq for interpretation. Dashboard recommendations send selected education, skills, interests, experience, and location fields to Groq for relevance ranking; direct identifiers, date of birth, income, and category are omitted from that AI request. Eligibility is evaluated separately against recorded opportunity rules. If you use Smart Resume, the text you paste is sent to Groq to extract profile fields. AvasarSetu does not store the full pasted resume; extracted values are placed in the profile form and are saved to your account only when you choose Save Profile. Processing by these third-party providers is subject to their privacy terms. Do not include Aadhaar, PAN, bank details, or other secrets in searches or resume text. The app uses profile fields to:
               </p>
               <ul className="list-disc pl-5 mt-2 space-y-1 text-sm">
                 <li>Filter out opportunities you are not qualified for.</li>
