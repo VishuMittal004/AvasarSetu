@@ -185,8 +185,13 @@ function ExploreContent() {
                 filtered = filtered.filter(r => r.eligibility.isEligible);
               if (onlyActive)
                 filtered = filtered.filter(r => getDeadlineDaysLeft(r.opportunity.deadline) === null || getDeadlineDaysLeft(r.opportunity.deadline)! >= 0);
-              setResults(filtered);
-              return;
+              if (filtered.length > 0) {
+                setResults(filtered);
+                return;
+              }
+              // A vector candidate list can be entirely removed by client-side
+              // filters (especially Hide Expired). Let lexical search try the
+              // full catalogue before displaying an empty state.
             }
           }
         } catch {
